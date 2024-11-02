@@ -1,4 +1,5 @@
 import { Button } from "./ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { 
   UserPlus, 
   Bell, 

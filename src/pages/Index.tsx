@@ -9,12 +9,10 @@ import QueueOverview from "@/components/QueueOverview";
 import ActionButtons from "@/components/ActionButtons";
 import TellerStatus from "@/components/TellerStatus";
 import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 
 const Index = () => {
   const [tellerStatus, setTellerStatus] = useState<"available" | "busy" | "away">("available");
-  const [queueCount, setQueueCount] = useState(0);
-  const [currentCustomer, setCurrentCustomer] = useState(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const queueType = localStorage.getItem("selectedQueueType");
@@ -36,41 +34,48 @@ const Index = () => {
   };
 
   // Fetch queue count
-  const fetchQueueCount = async () => {
-    const q = query(
-      collection(db, 'queue'),
-      where('completed_at', '==', null),
-      where('type', '==', queueType)
-    );
-    const snapshot = await getDocs(q);
-    setQueueCount(snapshot.size);
-  };
+  const { data: queueCount = 0 } = useQuery({
+    queryKey: ['queueCount', queueType],
+    queryFn: async () => {
+      const q = query(
+        collection(db, 'queue'),
+        where('completed_at', '==', null),
+        where('type', '==', queueType)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.size;
+    }
+  });
 
   // Fetch current customer
-  const fetchCurrentCustomer = async () => {
-    const q = query(
-      collection(db, 'queue'),
-      where('completed_at', '==', null),
-      where('type', '==', queueType),
-      orderBy('timestamp', 'asc'),
-      limit(1)
-    );
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return null;
-    
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    return {
-      id: doc.id,
-      name: `Customer ${data.queue_number}`,
-      queueNumber: data.queue_number,
-      transactionType: data.type,
-      priority: data.queue_prefix === 'VIP' ? 'vip' : 'regular',
-      accountId: data.account_ID || 'N/A',
-      waitingTime: '10 min',
-      ...data
-    };
-  };
+  const { data: currentCustomer, refetch: refetchCustomer } = useQuery({
+    queryKey: ['currentCustomer', queueType],
+    queryFn: async () => {
+      const q = query(
+        collection(db, 'queue'),
+        where('completed_at', '==', null),
+        where('type', '==', queueType),
+        orderBy('timestamp', 'asc'),
+        limit(1)
+      );
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return null;
+      
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: `Customer ${data.queue_number}`,
+        queueNumber: data.queue_number,
+        transactionType: data.type,
+        priority: data.queue_prefix === 'VIP' ? 'vip' : 'regular',
+        accountId: data.account_ID || 'N/A',
+        waitingTime: '10 min',
+        ...data
+      };
+    },
+    enabled: false // Don't fetch automatically
+  });
 
   const completeMutation = useMutation({
     mutationFn: async (queueId: string) => {
@@ -80,10 +85,10 @@ const Index = () => {
       });
     },
     onSuccess: () => {
-      setCurrentCustomer(null);
+      queryClient.invalidateQueries({ queryKey: ['queueCount'] });
+      queryClient.invalidateQueries({ queryKey: ['currentCustomer'] });
       setTellerStatus("available");
-      queryClient.invalidateQueries({ queryKey: ['queue'] });
-      toast("Transaction completed successfully");
+      toast.success("Transaction completed successfully");
     },
     onError: (error: Error) => {
       toast.error(`Error completing transaction: ${error.message}`);
@@ -92,9 +97,20 @@ const Index = () => {
 
   const handleNext = async () => {
     setTellerStatus("busy");
-    fetchQueueCount();
-    const customer = await fetchCurrentCustomer();
-    setCurrentCustomer(customer);
+    toast.promise(refetchCustomer(), {
+      loading: 'Fetching next customer...',
+      success: (data) => {
+        if (!data) {
+          setTellerStatus("available");
+          return 'No customers in queue';
+        }
+        return 'Next customer fetched successfully';
+      },
+      error: (err) => {
+        setTellerStatus("available");
+        return `Error fetching next customer: ${err.message}`;
+      }
+    });
   };
 
   const handleComplete = () => {
@@ -105,7 +121,7 @@ const Index = () => {
 
   const handleSkip = () => {
     setTellerStatus("available");
-    toast("Customer skipped");
+    toast.info("Customer skipped");
   };
 
   return (

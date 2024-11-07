@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, limit, doc, updateDoc, Timestamp } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,14 @@ import QueueOverview from "@/components/QueueOverview";
 import ActionButtons from "@/components/ActionButtons";
 import TellerStatus from "@/components/TellerStatus";
 import { toast } from "sonner";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const Index = () => {
   const [tellerStatus, setTellerStatus] = useState<"available" | "busy" | "away">("available");
   const [queueCount, setQueueCount] = useState(0);
   const [currentCustomer, setCurrentCustomer] = useState(null);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const queueType = localStorage.getItem("selectedQueueType");
 
   useEffect(() => {
@@ -38,7 +40,7 @@ const Index = () => {
     const q = query(
       collection(db, 'queue'),
       where('completed_at', '==', null),
-      where('type', '==', queueType) // Filter by selected queue type
+      where('type', '==', queueType)
     );
     const snapshot = await getDocs(q);
     setQueueCount(snapshot.size);
@@ -49,7 +51,7 @@ const Index = () => {
     const q = query(
       collection(db, 'queue'),
       where('completed_at', '==', null),
-      where('type', '==', queueType), // Filter by selected queue type
+      where('type', '==', queueType),
       orderBy('timestamp', 'asc'),
       limit(1)
     );
@@ -65,15 +67,33 @@ const Index = () => {
       transactionType: data.type,
       priority: data.queue_prefix === 'VIP' ? 'vip' : 'regular',
       accountId: data.account_ID || 'N/A',
-      waitingTime: '10 min', // Calculate this based on timestamp
+      waitingTime: '10 min',
       ...data
     };
   };
 
+  const completeMutation = useMutation({
+    mutationFn: async (queueId: string) => {
+      const queueRef = doc(db, 'queue', queueId);
+      await updateDoc(queueRef, {
+        completed_at: Timestamp.now()
+      });
+    },
+    onSuccess: () => {
+      setCurrentCustomer(null);
+      setTellerStatus("available");
+      queryClient.invalidateQueries({ queryKey: ['queue'] });
+      toast("Transaction completed successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(`Error completing transaction: ${error.message}`);
+    }
+  });
+
   const handleNext = async () => {
     setTellerStatus("busy");
-    fetchQueueCount(); // Update queue count
-    const customer = await fetchCurrentCustomer(); // Fetch current customer
+    fetchQueueCount();
+    const customer = await fetchCurrentCustomer();
     setCurrentCustomer(customer);
   };
 
@@ -85,11 +105,7 @@ const Index = () => {
 
   const handleSkip = () => {
     setTellerStatus("available");
-    toast({
-      title: "Customer skipped",
-      description: "Ready for next customer",
-      variant: "destructive",
-    });
+    toast("Customer skipped");
   };
 
   return (

@@ -4,42 +4,87 @@ import QueueOverview from "../components/QueueOverview";
 import CustomerDetails from "../components/CustomerDetails";
 import ActionButtons from "../components/ActionButtons";
 import { useToast } from "../components/ui/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { collection, query, where, getDocs, updateDoc, doc, orderBy, limit } from "firebase/firestore";
+import { db } from "../lib/firebase";
 
 const Index = () => {
   const [tellerStatus, setTellerStatus] = useState<"available" | "busy" | "away">("available");
-  const [currentCustomer, setCurrentCustomer] = useState<any>(null);
-  const [queueCount, setQueueCount] = useState(12);
+  const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Fetch queue count
+  const { data: queueCount = 0 } = useQuery({
+    queryKey: ['queueCount'],
+    queryFn: async () => {
+      const q = query(
+        collection(db, 'queue'),
+        where('completed_at', '==', null)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.size;
+    }
+  });
+
+  // Fetch current customer
+  const { data: currentCustomer } = useQuery({
+    queryKey: ['currentCustomer'],
+    queryFn: async () => {
+      const q = query(
+        collection(db, 'queue'),
+        where('completed_at', '==', null),
+        orderBy('timestamp', 'asc'),
+        limit(1)
+      );
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return null;
+      
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: `Customer ${data.queue_number}`,
+        queueNumber: data.queue_number,
+        transactionType: data.type,
+        priority: data.queue_prefix === 'VIP' ? 'vip' : 'regular',
+        accountId: data.account_ID || 'N/A',
+        waitingTime: '10 min', // Calculate this based on timestamp
+        ...data
+      };
+    },
+    enabled: tellerStatus === 'available'
+  });
+
+  // Mark as complete mutation
+  const completeMutation = useMutation({
+    mutationFn: async (queueId: string) => {
+      const queueRef = doc(db, 'queue', queueId);
+      await updateDoc(queueRef, {
+        completed_at: new Date().toISOString()
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['currentCustomer'] });
+      queryClient.invalidateQueries({ queryKey: ['queueCount'] });
+      setTellerStatus('available');
+      toast({
+        title: "Transaction completed",
+        description: "Ready for next customer"
+      });
+    }
+  });
+
   const handleNext = () => {
-    // Simulated customer data - in real app would come from API
-    setCurrentCustomer({
-      id: "C123",
-      name: "John Smith",
-      queueNumber: "A045",
-      transactionType: "deposit",
-      priority: "regular",
-      accountId: "1234567890",
-      waitingTime: "10 min",
-    });
     setTellerStatus("busy");
-    toast({
-      title: "New customer assigned",
-      description: "Queue number A045 has been assigned to you.",
-    });
   };
 
-  const handleCall = () => {
-    if (currentCustomer) {
-      toast({
-        title: "Customer called",
-        description: `Now calling queue number ${currentCustomer.queueNumber}`,
-      });
+  const handleComplete = () => {
+    if (currentCustomer?.id) {
+      completeMutation.mutate(currentCustomer.id);
     }
   };
 
   const handleSkip = () => {
-    setCurrentCustomer(null);
     setTellerStatus("available");
     toast({
       title: "Customer skipped",
@@ -58,13 +103,13 @@ const Index = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
-            <CustomerDetails customer={currentCustomer} />
+            <CustomerDetails customer={currentCustomer || null} />
           </div>
           <div className="space-y-8">
             <QueueOverview count={queueCount} />
             <ActionButtons
               onNext={handleNext}
-              onCall={handleCall}
+              onComplete={handleComplete}
               onSkip={handleSkip}
               disabled={tellerStatus === "away"}
               customerPresent={!!currentCustomer}

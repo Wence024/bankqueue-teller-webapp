@@ -2,13 +2,13 @@ import { Button } from "./ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { 
   UserPlus, 
-  Bell, 
+  CheckCircle2, 
   SkipForward 
 } from "lucide-react";
 
 interface ActionButtonsProps {
   onNext: () => void;
-  onCall: () => void;
+  onComplete: () => void;
   onSkip: () => void;
   disabled: boolean;
   customerPresent: boolean;
@@ -16,7 +16,7 @@ interface ActionButtonsProps {
 
 const ActionButtons = ({ 
   onNext, 
-  onCall, 
+  onComplete, 
   onSkip, 
   disabled, 
   customerPresent 
@@ -38,11 +38,11 @@ const ActionButtons = ({
         <Button
           className="w-full"
           variant="secondary"
-          onClick={onCall}
+          onClick={onComplete}
           disabled={disabled || !customerPresent}
         >
-          <Bell className="w-4 h-4 mr-2" />
-          Call Customer
+          <CheckCircle2 className="w-4 h-4 mr-2" />
+          Complete Transaction
         </Button>
         <Button
           className="w-full"

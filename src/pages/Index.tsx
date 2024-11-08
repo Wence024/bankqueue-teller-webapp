@@ -40,7 +40,7 @@ const Index = () => {
       const q = query(
         collection(db, 'queue'),
         where('completed_at', '==', null),
-        where('type', '==', queueType)
+        where('type', '==', queueType?.toLowerCase())
       );
       const snapshot = await getDocs(q);
       return snapshot.size;
@@ -54,25 +54,39 @@ const Index = () => {
       const q = query(
         collection(db, 'queue'),
         where('completed_at', '==', null),
-        where('type', '==', queueType),
+        where('type', '==', queueType?.toLowerCase()),
         orderBy('timestamp', 'asc'),
         limit(1)
       );
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) return null;
       
-      const doc = snapshot.docs[0];
-      const data = doc.data();
-      return {
-        id: doc.id,
-        name: `Customer ${data.queue_number}`,
-        queueNumber: data.queue_number,
-        transactionType: data.type,
-        priority: data.queue_prefix === 'VIP' ? 'vip' : 'regular',
-        accountId: data.account_ID || 'N/A',
-        waitingTime: '10 min',
-        ...data
-      };
+      try {
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+          return null;
+        }
+        
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        
+        // Calculate waiting time
+        const waitingTime = data.timestamp ? 
+          Math.floor((Date.now() - data.timestamp.toDate().getTime()) / 60000) : 
+          0;
+
+        return {
+          id: doc.id,
+          name: `Customer ${data.queue_number}`,
+          queueNumber: data.queue_number,
+          transactionType: data.type,
+          priority: data.queue_prefix === 'VIP' ? 'vip' : 'regular',
+          accountId: data.account_ID || 'N/A',
+          waitingTime: `${waitingTime} min`,
+          ...data
+        };
+      } catch (error) {
+        console.error('Error fetching customer:', error);
+        throw error;
+      }
     },
     enabled: false // Don't fetch automatically
   });

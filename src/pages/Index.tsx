@@ -37,10 +37,12 @@ const Index = () => {
   const { data: queueCount = 0 } = useQuery({
     queryKey: ['queueCount', queueType],
     queryFn: async () => {
+      if (!queueType) return 0;
+      
       const q = query(
         collection(db, 'queue'),
         where('completed_at', '==', null),
-        where('type', '==', queueType?.toLowerCase())
+        where('type', '==', queueType.toLowerCase())
       );
       const snapshot = await getDocs(q);
       return snapshot.size;
@@ -51,22 +53,37 @@ const Index = () => {
   const { data: currentCustomer, refetch: refetchCustomer } = useQuery({
     queryKey: ['currentCustomer', queueType],
     queryFn: async () => {
+      if (!queueType) {
+        console.log('No queue type selected');
+        return null;
+      }
+
+      console.log('Fetching with queue type:', queueType.toLowerCase());
+      
       const q = query(
         collection(db, 'queue'),
         where('completed_at', '==', null),
-        where('type', '==', queueType?.toLowerCase()),
+        where('type', '==', queueType.toLowerCase()),
         orderBy('timestamp', 'asc'),
         limit(1)
       );
       
       try {
         const snapshot = await getDocs(q);
+        console.log('Query snapshot:', {
+          empty: snapshot.empty,
+          size: snapshot.size,
+          docs: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        });
+
         if (snapshot.empty) {
+          console.log('No matching documents found');
           return null;
         }
         
         const doc = snapshot.docs[0];
         const data = doc.data();
+        console.log('Document data:', data);
         
         // Calculate waiting time
         const waitingTime = data.timestamp ? 
@@ -111,20 +128,26 @@ const Index = () => {
 
   const handleNext = async () => {
     setTellerStatus("busy");
-    toast.promise(refetchCustomer(), {
-      loading: 'Fetching next customer...',
-      success: (data) => {
-        if (!data) {
-          setTellerStatus("available");
-          return 'No customers in queue';
-        }
-        return 'Next customer fetched successfully';
-      },
-      error: (err) => {
-        setTellerStatus("available");
-        return `Error fetching next customer: ${err.message}`;
-      }
+    const result = await refetchCustomer();
+    console.log('Fetch result:', {
+      data: result.data,
+      error: result.error,
+      isSuccess: result.isSuccess,
     });
+
+    if (result.error) {
+      setTellerStatus("available");
+      toast.error(`Error: ${result.error.message}`);
+      return;
+    }
+
+    if (!result.data) {
+      setTellerStatus("available");
+      toast.info('No customers in queue');
+      return;
+    }
+
+    toast.success('Next customer fetched successfully');
   };
 
   const handleComplete = () => {

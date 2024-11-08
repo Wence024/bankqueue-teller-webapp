@@ -1,6 +1,16 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, query, where, getDocs, orderBy, limit, doc, updateDoc, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+  limit,
+  doc,
+  updateDoc,
+  Timestamp,
+} from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -12,7 +22,9 @@ import { toast } from "sonner";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 
 const Index = () => {
-  const [tellerStatus, setTellerStatus] = useState<"available" | "busy" | "away">("available");
+  const [tellerStatus, setTellerStatus] = useState<
+    "available" | "busy" | "away"
+  >("available");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const queueType = localStorage.getItem("selectedQueueType");
@@ -35,101 +47,101 @@ const Index = () => {
 
   // Fetch queue count
   const { data: queueCount = 0 } = useQuery({
-    queryKey: ['queueCount', queueType],
+    queryKey: ["queueCount", queueType],
     queryFn: async () => {
       if (!queueType) return 0;
-      
+
       const q = query(
-        collection(db, 'queue'),
-        where('completed_at', '==', null),
-        where('type', '==', queueType.toLowerCase())
+        collection(db, "receipts"),
+        where("completed_at", "==", null),
+        where("type", "==", queueType.toLowerCase())
       );
       const snapshot = await getDocs(q);
       return snapshot.size;
-    }
+    },
   });
 
   // Fetch current customer
   const { data: currentCustomer, refetch: refetchCustomer } = useQuery({
-    queryKey: ['currentCustomer', queueType],
+    queryKey: ["currentCustomer", queueType],
     queryFn: async () => {
       if (!queueType) {
-        console.log('No queue type selected');
+        console.log("No queue type selected");
         return null;
       }
 
-      console.log('Fetching with queue type:', queueType.toLowerCase());
-      
+      console.log("Fetching with queue type:", queueType.toLowerCase());
+
       const q = query(
-        collection(db, 'queue'),
-        where('completed_at', '==', null),
-        where('type', '==', queueType.toLowerCase()),
-        orderBy('timestamp', 'asc'),
+        collection(db, "receipts"),
+        where("completed_at", "==", null),
+        where("type", "==", queueType.toLowerCase()),
+        orderBy("timestamp", "asc"),
         limit(1)
       );
-      
+
       try {
         const snapshot = await getDocs(q);
-        console.log('Query snapshot:', {
+        console.log("Query snapshot:", {
           empty: snapshot.empty,
           size: snapshot.size,
-          docs: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          docs: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
         });
 
         if (snapshot.empty) {
-          console.log('No matching documents found');
+          console.log("No matching documents found");
           return null;
         }
-        
+
         const doc = snapshot.docs[0];
         const data = doc.data();
-        console.log('Document data:', data);
-        
+        console.log("Document data:", data);
+
         // Calculate waiting time
-        const waitingTime = data.timestamp ? 
-          Math.floor((Date.now() - data.timestamp.toDate().getTime()) / 60000) : 
-          0;
+        const waitingTime = data.timestamp
+          ? Math.floor((Date.now() - data.timestamp.toDate().getTime()) / 60000)
+          : 0;
 
         return {
           id: doc.id,
           name: `Customer ${data.queue_number}`,
           queueNumber: data.queue_number,
           transactionType: data.type,
-          priority: data.queue_prefix === 'VIP' ? 'vip' : 'regular',
-          accountId: data.account_ID || 'N/A',
+          priority: data.queue_prefix === "VIP" ? "vip" : "regular",
+          accountId: data.account_ID || "N/A",
           waitingTime: `${waitingTime} min`,
-          ...data
+          ...data,
         };
       } catch (error) {
-        console.error('Error fetching customer:', error);
+        console.error("Error fetching customer:", error);
         throw error;
       }
     },
-    enabled: false // Don't fetch automatically
+    enabled: false, // Don't fetch automatically
   });
 
   const completeMutation = useMutation({
     mutationFn: async (queueId: string) => {
-      const queueRef = doc(db, 'queue', queueId);
+      const queueRef = doc(db, "receipts", queueId);
       await updateDoc(queueRef, {
-        completed_at: Timestamp.now()
+        completed_at: Timestamp.now(),
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['queueCount'] });
-      queryClient.invalidateQueries({ queryKey: ['currentCustomer'] });
+      queryClient.invalidateQueries({ queryKey: ["queueCount"] });
+      queryClient.invalidateQueries({ queryKey: ["currentCustomer"] });
       setTellerStatus("available");
       toast.success("Transaction completed successfully");
     },
     onError: (error: Error) => {
       toast.error(`Error completing transaction: ${error.message}`);
-    }
+    },
   });
 
   const handleNext = async () => {
     setTellerStatus("busy");
     const result = await refetchCustomer();
-    console.log('Fetch result:', {
+    console.log("Fetch result:", {
       data: result.data,
       error: result.error,
       isSuccess: result.isSuccess,
@@ -143,11 +155,11 @@ const Index = () => {
 
     if (!result.data) {
       setTellerStatus("available");
-      toast.info('No customers in queue');
+      toast.info("No customers in queue");
       return;
     }
 
-    toast.success('Next customer fetched successfully');
+    toast.success("Next customer fetched successfully");
   };
 
   const handleComplete = () => {
@@ -166,13 +178,18 @@ const Index = () => {
       <div className="max-w-7xl mx-auto space-y-8">
         <header className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-primary">Teller Interface</h1>
+            <h1 className="text-3xl font-bold text-primary">
+              Teller Interface
+            </h1>
             <p className="text-muted-foreground mt-1 capitalize">
               {queueType?.replace("_", " ")} Queue
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <TellerStatus status={tellerStatus} onStatusChange={setTellerStatus} />
+            <TellerStatus
+              status={tellerStatus}
+              onStatusChange={setTellerStatus}
+            />
             <Button variant="outline" onClick={handleLogout}>
               Logout
             </Button>

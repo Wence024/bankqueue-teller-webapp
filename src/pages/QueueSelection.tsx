@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, query, where, setDoc, doc } from "firebase/firestore";
+import { collection, getDocs, query, where, setDoc, doc, onDisconnect, deleteDoc } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
+import { onAuthStateChanged } from "firebase/auth";
 
 const QUEUE_TYPES = [
   "deposit",
@@ -19,6 +20,34 @@ const QueueSelection = () => {
   const [selectedType, setSelectedType] = useState("");
   const [takenTypes, setTakenTypes] = useState<string[]>([]);
   const navigate = useNavigate();
+
+  // Check authentication status and cleanup on unmount
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        // User is logged out, clean up their active_tellers document
+        const userId = auth.currentUser?.uid;
+        if (userId) {
+          try {
+            await deleteDoc(doc(db, "active_tellers", userId));
+          } catch (error) {
+            console.error("Error cleaning up active_tellers:", error);
+          }
+        }
+        navigate("/login");
+      }
+    });
+
+    // Cleanup function
+    return () => {
+      unsubscribeAuth();
+      // Clean up active_tellers document when component unmounts
+      const userId = auth.currentUser?.uid;
+      if (userId) {
+        deleteDoc(doc(db, "active_tellers", userId)).catch(console.error);
+      }
+    };
+  }, [navigate]);
 
   useEffect(() => {
     const fetchTakenTypes = async () => {
@@ -40,11 +69,15 @@ const QueueSelection = () => {
         return;
       }
 
-      await setDoc(doc(db, "active_tellers", userId), {
+      const tellerRef = doc(db, "active_tellers", userId);
+      
+      // Set the document with server timestamp
+      await setDoc(tellerRef, {
         tellerId: userId,
         queueType: type,
         active: true,
         timestamp: new Date(),
+        lastSeen: new Date() // Add this field for tracking active status
       });
 
       localStorage.setItem("selectedQueueType", type);

@@ -18,13 +18,12 @@ import CustomerDetails from "@/components/CustomerDetails";
 import QueueOverview from "@/components/QueueOverview";
 import ActionButtons from "@/components/ActionButtons";
 import TellerStatus from "@/components/TellerStatus";
+import TransactionDetails from "@/components/TransactionDetails";
 import { toast } from "sonner";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 
 const Index = () => {
-  const [tellerStatus, setTellerStatus] = useState<
-    "available" | "busy" | "away"
-  >("available");
+  const [tellerStatus, setTellerStatus] = useState<"available" | "busy" | "away">("available");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const queueType = localStorage.getItem("selectedQueueType");
@@ -70,8 +69,6 @@ const Index = () => {
         return null;
       }
 
-      console.log("Fetching with queue type:", queueType.toLowerCase());
-
       const q = query(
         collection(db, "receipts"),
         where("completed_at", "==", null),
@@ -80,44 +77,28 @@ const Index = () => {
         limit(1)
       );
 
-      try {
-        const snapshot = await getDocs(q);
-        console.log("Query snapshot:", {
-          empty: snapshot.empty,
-          size: snapshot.size,
-          docs: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-        });
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return null;
 
-        if (snapshot.empty) {
-          console.log("No matching documents found");
-          return null;
-        }
+      const doc = snapshot.docs[0];
+      const data = doc.data();
 
-        const doc = snapshot.docs[0];
-        const data = doc.data();
-        console.log("Document data:", data);
+      const waitingTime = data.timestamp
+        ? Math.floor((Date.now() - data.timestamp.toDate().getTime()) / 60000)
+        : 0;
 
-        // Calculate waiting time
-        const waitingTime = data.timestamp
-          ? Math.floor((Date.now() - data.timestamp.toDate().getTime()) / 60000)
-          : 0;
-
-        return {
-          id: doc.id,
-          name: `Customer ${data.queue_number}`,
-          queueNumber: data.queue_number,
-          transactionType: data.type,
-          priority: data.queue_prefix === "VIP" ? "vip" : "regular",
-          accountId: data.account_ID || "N/A",
-          waitingTime: `${waitingTime} min`,
-          ...data,
-        };
-      } catch (error) {
-        console.error("Error fetching customer:", error);
-        throw error;
-      }
+      return {
+        id: doc.id,
+        name: `Customer ${data.queue_number}`,
+        queueNumber: data.queue_number,
+        transactionType: data.type,
+        priority: data.queue_prefix === "VIP" ? "vip" : "regular",
+        accountId: data.account_ID || "N/A",
+        waitingTime: `${waitingTime} min`,
+        ...data,
+      };
     },
-    enabled: false, // Don't fetch automatically
+    enabled: false,
   });
 
   const completeMutation = useMutation({
@@ -141,11 +122,6 @@ const Index = () => {
   const handleNext = async () => {
     setTellerStatus("busy");
     const result = await refetchCustomer();
-    console.log("Fetch result:", {
-      data: result.data,
-      error: result.error,
-      isSuccess: result.isSuccess,
-    });
 
     if (result.error) {
       setTellerStatus("available");
@@ -197,8 +173,9 @@ const Index = () => {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-8">
             <CustomerDetails customer={currentCustomer} />
+            <TransactionDetails transaction={currentCustomer} />
           </div>
           <div className="space-y-8">
             <QueueOverview count={queueCount} />

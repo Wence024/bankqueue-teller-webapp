@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, query, where, setDoc, doc, onDisconnect, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, setDoc, doc, deleteDoc } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";

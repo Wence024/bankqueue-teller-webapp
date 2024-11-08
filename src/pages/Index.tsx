@@ -87,7 +87,8 @@ const Index = () => {
         ? Math.floor((Date.now() - data.timestamp.toDate().getTime()) / 60000)
         : 0;
 
-      return {
+      // Map Firestore data to match both CustomerDetails and TransactionDetails types
+      const customerData = {
         id: doc.id,
         name: `Customer ${data.queue_number}`,
         queueNumber: data.queue_number,
@@ -95,7 +96,21 @@ const Index = () => {
         priority: data.queue_prefix === "VIP" ? "vip" : "regular",
         accountId: data.account_ID || "N/A",
         waitingTime: `${waitingTime} min`,
-        ...data,
+      };
+
+      // Map Firestore data to Transaction type based on transaction type
+      const transactionData = {
+        type: data.type,
+        account_ID: data.account_ID,
+        amount: data.amount,
+        firstname: data.firstname,
+        lastname: data.lastname,
+        monthly_interest: data.monthly_interest,
+      };
+
+      return {
+        ...customerData,
+        ...transactionData,
       };
     },
     enabled: false,

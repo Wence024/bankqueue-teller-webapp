@@ -7,8 +7,6 @@ import {
   getDocs,
   orderBy,
   limit,
-  doc,
-  updateDoc,
   Timestamp,
 } from "firebase/firestore";
 import { signOut } from "firebase/auth";
@@ -20,12 +18,11 @@ import ActionButtons from "@/components/ActionButtons";
 import TellerStatus from "@/components/TellerStatus";
 import TransactionDetails from "@/components/TransactionDetails";
 import { toast } from "sonner";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 const Index = () => {
   const [tellerStatus, setTellerStatus] = useState<"available" | "busy" | "away">("available");
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const queueType = localStorage.getItem("selectedQueueType");
 
   useEffect(() => {
@@ -64,10 +61,7 @@ const Index = () => {
   const { data: currentCustomer, refetch: refetchCustomer } = useQuery({
     queryKey: ["currentCustomer", queueType],
     queryFn: async () => {
-      if (!queueType) {
-        console.log("No queue type selected");
-        return null;
-      }
+      if (!queueType) return null;
 
       const q = query(
         collection(db, "receipts"),
@@ -87,7 +81,6 @@ const Index = () => {
         ? Math.floor((Date.now() - data.timestamp.toDate().getTime()) / 60000)
         : 0;
 
-      // Map Firestore data to match both CustomerDetails and TransactionDetails types
       const customerData = {
         id: doc.id,
         name: `Customer ${data.queue_number}`,
@@ -98,7 +91,6 @@ const Index = () => {
         waitingTime: `${waitingTime} min`,
       };
 
-      // Map Firestore data to Transaction type based on transaction type
       const transactionData = {
         type: data.type,
         account_ID: data.account_ID,
@@ -114,24 +106,6 @@ const Index = () => {
       };
     },
     enabled: false,
-  });
-
-  const completeMutation = useMutation({
-    mutationFn: async (queueId: string) => {
-      const queueRef = doc(db, "receipts", queueId);
-      await updateDoc(queueRef, {
-        completed_at: Timestamp.now(),
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["queueCount"] });
-      queryClient.invalidateQueries({ queryKey: ["currentCustomer"] });
-      setTellerStatus("available");
-      toast.success("Transaction completed successfully");
-    },
-    onError: (error: Error) => {
-      toast.error(`Error completing transaction: ${error.message}`);
-    },
   });
 
   const handleNext = async () => {
@@ -151,17 +125,6 @@ const Index = () => {
     }
 
     toast.success("Next customer fetched successfully");
-  };
-
-  const handleComplete = () => {
-    if (currentCustomer?.id) {
-      completeMutation.mutate(currentCustomer.id);
-    }
-  };
-
-  const handleSkip = () => {
-    setTellerStatus("available");
-    toast.info("Customer skipped");
   };
 
   return (
@@ -196,10 +159,9 @@ const Index = () => {
             <QueueOverview count={queueCount} />
             <ActionButtons
               onNext={handleNext}
-              onComplete={handleComplete}
-              onSkip={handleSkip}
               disabled={tellerStatus === "away"}
               customerPresent={!!currentCustomer}
+              customerId={currentCustomer?.id}
             />
           </div>
         </div>
